@@ -130,50 +130,50 @@ function canon_unistall() {
 
 function canon_install() {
 	echo
-	PS3='Выбор принтера. Введите нужную цифру и нажмите Enter: '
+	PS3='Choose printer. Enter desired number and press Enter: '
 	select NAMEPRINTER in $NAMESPRINTERS
 	do
 		[ -n "$NAMEPRINTER" ] && break
 	done
-	echo "Выбран принтер: $NAMEPRINTER"
+	echo "Choosen printer: $NAMEPRINTER"
 	echo
-	PS3='Как принтер подключен к комьютеру? Введите нужную цифру и нажмите Enter: '
-	select CONECTION in 'Через разъем порта USB' 'Через разъем локальной сети (LAN, NET)'
+	PS3='How is the printer connected to the computer? Enter the desired number and press Enter: '
+	select CONECTION in 'Via USB' 'Via LAN (LAN, NET)'
 	do
 		if  [ "$REPLY" == "1" ]; then
 			CONECTION="usb"
 			while true
 			do	
-				#ищем подключенное к порту USB устройство
+				#looking for a device connected to the USB port
 				NODE_DEVICE=$(ls -1t /dev/usb/lp* 2> /dev/null | head -1)
 				if [ -n "$NODE_DEVICE" ]; then
-					#определяем серийный номер принтера
+					#determine the serial number of the printer
 					PRINTER_SERIAL=$(udevadm info --attribute-walk --name=$NODE_DEVICE | sed '/./{H;$!d;};x;/ATTRS{product}=="Canon CAPT USB \(Device\|Printer\)"/!d;' |  awk -F'==' '/ATTRS{serial}/{print $2}')
-					#если серийный номер найден, значит найденное устройство принтер Canon
+					#if the serial number is found, then the Canon printer found is the device
 					[ -n "$PRINTER_SERIAL" ] && break
 				fi
-				echo -ne "Включите принтер\r"
+				echo -ne "Turn on the printer\r"
 				sleep 2
 			done
 			PATH_DEVICE="/dev/canon$NAMEPRINTER"
 			break
 		elif [ "$REPLY" == "2" ]; then
 			CONECTION="lan"
-			read -p 'Введите IP-адрес принтера: ' IP_ADDRES
+			read -p 'Enter the IP address of the printer: ' IP_ADDRES
 			until valid_ip "$IP_ADDRES"
 			do
-				echo 'Неверный формат IP-адреса, введите четыре десятичных числа значением'
+				echo 'Incorrect IP address format, enter four decimal numbers with a value'
 				echo -n 'от 0 до 255, разделённых точками: '
 				read IP_ADDRES
 			done
 			PATH_DEVICE="net:$IP_ADDRES"
-			echo 'Включите принтер и нажмите любую клавишу'
+			echo 'Turn on the printer and press any key'
 			read -s -n1
 			sleep 5
 			break
 		fi		
 	done
-	echo 'Установка драйвера'
+	echo 'Driver installation'
 	COMMON_FILE=cndrvcups-common_${DRIVER_VERSION_COMMON}_${ARCH}.deb
 	CAPT_FILE=cndrvcups-capt_${DRIVER_VERSION}_${ARCH}.deb
 	if [ ! -f $COMMON_FILE ]; then		
@@ -187,13 +187,13 @@ function canon_install() {
 	apt-get -y update
 	apt-get -y install libglade2-0
 	check_error PACKAGE $? libglade2-0
-	echo 'Установка общего модуля для драйвера CUPS'
+	echo 'Installing a common module for the CUPS driver'
 	dpkg -i $COMMON_FILE
 	check_error PACKAGE $? $COMMON_FILE
-	echo 'Установка модуля драйвера принтера CAPT'
+	echo 'Installing the CAPT Printer Driver Module'
 	dpkg -i $CAPT_FILE
 	check_error PACKAGE $? $CAPT_FILE
-	#замена содержимого файла /etc/init.d/ccpd
+	#replacing file contents /etc/init.d/ccpd
 	echo '#!/bin/bash
 # startup script for Canon Printer Daemon for CUPS (ccpd)
 ### BEGIN INIT INFO
@@ -236,43 +236,43 @@ case $1 in
 		;;
 esac
 exit 0' > /etc/init.d/ccpd
-	#установка утилит для управления AppArmor
+	#installation of management utilities AppArmor
 	apt-get -y install apparmor-utils
-	#установка в AppArmor профиля в щадящий режим для cupsd
+	#setting the AppArmor profile to sparing mode for cupsd
 	aa-complain /usr/sbin/cupsd
-	echo 'Перезапуск CUPS'
+	echo 'Restarting CUPS'
 	service cups restart
-	echo 'Установка 32-битных библиотек необходимых для'
-	echo '64-разрядной версии драйвера принтера'
+	echo 'Installation of 32-bit libraries necessary for'
+	echo '64-bit printer driver'
 	if [ $ARCH == 'amd64' ]; then
 		apt-get -y install libatk1.0-0:i386 libcairo2:i386 libgtk2.0-0:i386 libpango1.0-0:i386 libstdc++6:i386 libpopt0:i386 libxml2:i386 libc6:i386
 		check_error PACKAGE $?
 	fi
-	echo 'Установка принтера в CUPS'
+	echo 'Installing the printer in CUPS'
 	/usr/sbin/lpadmin -p $NAMEPRINTER -P /usr/share/cups/model/CNCUPSLBP${LASERSHOT[$NAMEPRINTER]}CAPTK.ppd -v ccp://localhost:59687 -E
-	echo "Установка принтера $NAMEPRINTER, принтером, используемым по умолчанию"
+	echo "Installing $NAMEPRINTER, printer, the default printer"
 	/usr/sbin/lpadmin -d $NAMEPRINTER
-	echo 'Регистрация принтера в файле настройки ccpd демона'
+	echo 'Registering the printer in the ccpd daemon configuration file'
 	/usr/sbin/ccpdadmin -p $NAMEPRINTER -o $PATH_DEVICE
-	#проверка установки принтера
+	#check printer setup
 	installed_printer=$(ccpdadmin | grep $NAMEPRINTER | awk '{print $3}')
 	if [ -n "$installed_printer" ]; then
 		if [ "$CONECTION" == "usb" ]; then
-			echo 'Создание правила для принтера'
-			#составлем правило, которое обеспечит альтернативное имя (символическую ссылку) нашему принтеру, чтобы не зависить от меняющихся значений lp0,lp1, ...
+			echo 'Creating a rule for the printer'
+			#we will make a rule that will provide an alternative name (symbolic link) to our printer so that it does not depend on the changing values of lp0, lp1, ...
 			echo 'KERNEL=="lp[0-9]*", SUBSYSTEMS=="usb", ATTRS{serial}=='$PRINTER_SERIAL', SYMLINK+="canon'$NAMEPRINTER'"' > /etc/udev/rules.d/85-canon-capt.rules
-			#обновляем правила 
+			#updating rules 
 			udevadm control --reload-rules
-			#проверка созданного правила
+			#checking the created rule
 			until [ -e $PATH_DEVICE ]
 			do
-				echo -ne "Выключите принтер, подождите 2 секунды, затем включите принтер\r"
+				echo -ne "Turn off the printer, wait 2 seconds, then turn on the printer\r"
 				sleep 2
 			done
 		fi
-		echo -e "\e[2KЗапуск ccpd"
+		echo -e "\e[2KStart ccpd"
 		service ccpd restart
-		#автозагрузка ccpd
+		#ccpd startup
 		if [ $INIT_SYSTEM == 'systemd' ]; then
 			update-rc.d ccpd defaults
 		else
@@ -284,7 +284,7 @@ expect fork
 respawn
 exec /usr/sbin/ccpd start' > /etc/init/ccpd-start.conf	
 		fi
-		#создаем кнопку запуска captstatusui на рабочем столе
+		#create captstatusui launch button on the desktop
 		echo '#!/usr/bin/env xdg-open
 [Desktop Entry]
 Version=1.0
@@ -296,13 +296,13 @@ Type=Application
 Icon=/usr/share/icons/Humanity/devices/48/printer.svg' > "${XDG_DESKTOP_DIR}/captstatusui.desktop"
 		chmod 775 "${XDG_DESKTOP_DIR}/captstatusui.desktop"
 		chown $LOGIN_USER:$LOGIN_USER "${XDG_DESKTOP_DIR}/captstatusui.desktop"
-		#установка утилиты автоотключения для поддерживаемых моделей принтеров
+		#install auto-shutdown utility for supported printer models
 		if [[ "${!ASDT_SUPPORTED_MODELS[@]}" =~ "$NAMEPRINTER" ]]; then
 			SERIALRANGE=(${ASDT_SUPPORTED_MODELS[$NAMEPRINTER]})
 			SERIALMIN=${SERIALRANGE[0]}
 			SERIALMAX=${SERIALRANGE[1]}	
 			if [[ ${#PRINTER_SERIAL} -eq ${#SERIALMIN} && $PRINTER_SERIAL > $SERIALMIN && $PRINTER_SERIAL < $SERIALMAX || $PRINTER_SERIAL == $SERIALMIN || $PRINTER_SERIAL == $SERIALMAX ]]; then
-				echo "Установка утилиты autoshutdowntool"
+				echo "Install autoshutdowntool"
 				ASDT_FILE=autoshutdowntool_1.00-1_${ARCH}_deb.tar.gz
 				if [ ! -f $ASDT_FILE ]; then		
 					wget -O $ASDT_FILE ${URL_ASDT[$ARCH]}
@@ -311,12 +311,12 @@ Icon=/usr/share/icons/Humanity/devices/48/printer.svg' > "${XDG_DESKTOP_DIR}/cap
 				tar --gzip --extract --file=$ASDT_FILE --totals --directory=/usr/bin
 			fi
 		fi	
-		#запуск  captstatusui
+		#Start captstatusui
 		if [[ -n "$DISPLAY" ]] ; then
 			sudo -u $LOGIN_USER nohup captstatusui -P $NAMEPRINTER > /dev/null 2>&1 &
 			sleep 5
 		fi
-		echo 'Установка завершена. Нажмите любую клавишу для выхода'
+		echo 'Installation completed. Press any key to exit'
 		read -s -n1
 		exit 0
 	else
@@ -331,24 +331,24 @@ function canon_update() {
 	if [ -f /usr/sbin/ccpdadmin ]; then
 		NAMEPRINTER=$(ccpdadmin | grep LBP | awk '{print $3}')
 		if [ -n "$NAMEPRINTER" ]; then
-			echo "Найден принтер $NAMEPRINTER"
+			echo "Found printer $NAMEPRINTER"
 			SETUP_DRIVER_VERSION=$(dpkg -l | grep cndrvcups-capt | awk '{print $3}')
-			echo "Установленная версия драйвера: $SETUP_DRIVER_VERSION"
-			echo "Верcия драйвера, которая будет установлена: $DRIVER_VERSION"			
+			echo "Installed driver version: $SETUP_DRIVER_VERSION"
+			echo "Version of driver to be installed: $DRIVER_VERSION"			
 			dpkg --compare-versions $DRIVER_VERSION lt $SETUP_DRIVER_VERSION
 			if [ $? -eq 0 ]; then
-				echo 'Версия устанавливаемого драйвера меньше версии уже установленного.
-Обновление не будет продолжено. Нажмите любую клавишу для выхода'
+				echo 'The version of the driver to be installed is less than the version of the installed one.
+The update will not continue. Press any key to exit'
 				read -s -n1
 				exit 1
 			fi
-			echo "Завершение captstatusui"
+			echo "Completion of the captstatusui"
 			killall captstatusui 2> /dev/null
-			echo 'Остановка демона ccpd'
+			echo 'Installing daemon ccpd'
 			service ccpd stop
-			echo 'Удаление принтера из CUPS'
+			echo 'Removing a printer from CUPS'
 			lpadmin -x $NAMEPRINTER
-			#обновление драйвера...'
+			#updating driver...'
 			COMMON_FILE=cndrvcups-common_${DRIVER_VERSION_COMMON}_${ARCH}.deb
 			CAPT_FILE=cndrvcups-capt_${DRIVER_VERSION}_${ARCH}.deb
 			if [ ! -f $COMMON_FILE ]; then		
@@ -359,20 +359,20 @@ function canon_update() {
 				sudo -u $LOGIN_USER wget -O $CAPT_FILE ${URL_DRIVER[${ARCH}_capt]}
 				check_error WGET $? $CAPT_FILE
 			fi
-			echo 'Обновление общего модуля для драйвера CUPS'
+			echo 'Updating the general module for the driver CUPS'
 			dpkg -i $COMMON_FILE
 			check_error PACKAGE $? $COMMON_FILE
-			echo 'Обновление модуля драйвера принтера CAPT'
+			echo 'Updating the printer driver module CAPT'
 			dpkg -i $CAPT_FILE
 			check_error PACKAGE $? $CAPT_FILE
-			echo 'Перезапуск CUPS'
+			echo 'Restart CUPS'
 			service cups restart
-			echo 'Устанавка принтера в CUPS'
+			echo 'Setting up the printer in CUPS'
 			/usr/sbin/lpadmin -p $NAMEPRINTER -P /usr/share/cups/model/CNCUPSLBP${LASERSHOT[$NAMEPRINTER]}CAPTK.ppd -v ccp://localhost:59687 -E
-			echo "Установка принтера $NAMEPRINTER, принтером, используемым по умолчанию"
+			echo "Setting up printer $NAMEPRINTER, as default printer"
 			/usr/sbin/lpadmin -d $NAMEPRINTER
 			if [[ -n "$DISPLAY" ]] ; then			
-				echo 'Запуск captstatusui'
+				echo 'Start captstatusui'
 				while true
 				do
 					sleep 1
@@ -384,65 +384,65 @@ function canon_update() {
 					fi
 				done
 			fi
-			echo "Драйвер обновлен. Нажмите любую клавишу для выхода"
+			echo "The driver is updated. Press any key to exit"
 	 		read -s -n1
 			exit 0
 		fi
 	fi
-	echo "Принтеры из серии Canon LBP не установлены"
-	echo 'Нажмите любую клавишу для выхода'
+	echo "Printers from the Canon LBP series are not installed"
+	echo 'Press any key to exit'
 	read -s -n1
 	exit 1
 }
 
 function canon_help {
 	clear
-	echo 'Замечания по установке
-Если вы уже делали какие-либо действия по установке принтера этой серии, 
-в текущей системе, то перед началом установки, следует отменить эти действия.
-При отсутствии пакетов драйвера они автоматически скачиваются из интернета 
-в папку скрипта. Принтеры LBP-810, LBP-1210 подключайте через разъем порта USB
-Для обновления драйвера сначала удаляете старую версию через скрипт, затем 
-устанавливаете новую также через скрипт.
-Замечания по проблемам печати
-Если принтер перестает печатать, запускаете captstatusui через кнопку запуска 
-на рабочем столе или в терминале командой: captstatusui -P <имя_принтера>
-В окне captstatusui отображается сообщение о текущем состояние принтера, если
-возникает ошибка, выводится её описание. Здесь можно попробывать нажать кнопку 
-"Resume Job" для продолжение печати или кнопку "Cancel Job" для отмены задания. 
-Если это не помогает, тогда запускаете скрипт canon_restart.sh
+	echo 'Installation Notes
+If you have already taken any steps to install this printer series,
+in the current system, then before starting the installation, you should cancel these actions.
+If there are no driver packages, they are automatically downloaded from the Internet.
+to the script folder. Printers LBP-810, LBP-1210 connect via the USB port connector
+To update the driver, first delete the old version through the script, then
+install the new one also through the script.
+Printing Issues
+If the printer stops printing, start captstatusui through the start button
+on the desktop or in the terminal with the command: captstatusui -P <printer name>
+The captstatusui window displays a message about the current status of the printer if
+an error occurs, its description is displayed. Here you can try to press the button
+"Resume Job" to continue printing or the "Cancel Job" button to cancel the job.
+If this does not help, then run the canon_restart.sh script
 
-команда настройки принтера: cngplp
-дополнительные настройки, команда: captstatusui -P <имя_принтера>
-настройка автоотключения (не для всех моделей): autoshutdowntool
-Замечания и ошибки пишите на почту coden@mail.ru или 
-на форум http://forum.ubuntu.ru/index.php?topic=189049.0
-Для логирования процесса установки запускайте скрипт так:
+printer setup command: cngplp
+advanced settings, command: captstatusui -P <printer name>
+auto power off setting (not for all models): autoshutdowntool
+Remarks and errors write to coden@mail.ru or
+to the forum http://forum.ubuntu.ru/index.php?topic=189049.0
+To log the installation process, run the script like this:
 logsave log.txt ./canon_lbp_setup.sh
 '
 }
 
 clear
-echo 'Установка драйвера Linux CAPT Printer Driver v'${DRIVER_VERSION}' для принтеров Canon LBP
-на Ubuntu 12.04, 12.10, 13.04, 13.10, 14.04, 14.10, 15.04, 15.10, 16.04 32-битной и 64-битной архитектуры
-Поддерживаемые принтеры:'
+echo 'Driver installation Linux CAPT Printer Driver v'${DRIVER_VERSION}' for printers Canon LBP
+on Ubuntu 12.04, 12.10, 13.04, 13.10, 14.04, 14.10, 15.04, 15.10, 16.04 32-bit and 64-bit architecture
+Supported Printers:'
 echo "$NAMESPRINTERS" | sed ':a; /$/N; s/\n/, /; ta' | fold -s
 
-PS3='Выбор действия. Введите нужную цифру и нажмите Enter: '
-select opt in 'Установка' 'Удаление' 'Справка' 'Выход'
+PS3='Action selection. Enter the desired number and press Enter: '
+select opt in 'Installation' 'Removal' 'Help' 'Exit'
 do
-	if [ "$opt" == 'Установка' ]; then
+	if [ "$opt" == 'Installation' ]; then
 		canon_install
 		break
-	elif [ "$opt" == 'Удаление' ]; then
+	elif [ "$opt" == 'Removal' ]; then
 		canon_unistall
 		break
 #	elif [ "$opt" == 'Обновление' ]; then
 #		canon_update
 #		break	
-	elif [ "$opt" == 'Справка' ]; then
+	elif [ "$opt" == 'Help' ]; then
 		canon_help
-	elif [ "$opt" == 'Выход' ]; then
+	elif [ "$opt" == 'Exit' ]; then
 		break
 	fi
 done
